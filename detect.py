@@ -12,7 +12,7 @@ from ultralytics import YOLO
 BALL_CLASS_ID = 32  # COCO class id for "sports ball"
 
 
-def run_detection(model_path: str, source, ball_class_id: int):
+def run_detection(model_path: str, source, ball_class_id: int, imgsz: int, resize_width: int):
     model = YOLO(model_path)
     cap = cv2.VideoCapture(source)
     if not cap.isOpened():
@@ -26,7 +26,16 @@ def run_detection(model_path: str, source, ball_class_id: int):
             print("End of stream or camera error.")
             break
 
-        results = model(frame, classes=[ball_class_id], verbose=False)
+        # Optional: shrink the frame before running detection. Lower resolution
+        # frames process faster, which helps push FPS up (small accuracy tradeoff).
+        if resize_width > 0:
+            h, w = frame.shape[:2]
+            scale = resize_width / w
+            frame = cv2.resize(frame, (resize_width, int(h * scale)))
+
+        # imgsz controls the resolution YOLO actually runs inference at.
+        # Smaller imgsz = faster but slightly less accurate on small objects.
+        results = model(frame, classes=[ball_class_id], imgsz=imgsz, verbose=False)
         annotated_frame = results[0].plot()
 
         current_time = time.time()
@@ -51,7 +60,11 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="yolov8n.pt")
     parser.add_argument("--source", type=str, default="0")
     parser.add_argument("--class-id", type=int, default=BALL_CLASS_ID)
+    parser.add_argument("--imgsz", type=int, default=640,
+                         help="Inference resolution passed to YOLO. Lower = faster (default: 640)")
+    parser.add_argument("--resize-width", type=int, default=0,
+                         help="Resize captured frame to this width before detection, 0 = no resize (default: 0)")
     args = parser.parse_args()
 
     video_source = int(args.source) if args.source.isdigit() else args.source
-    run_detection(args.model, video_source, args.class_id)
+    run_detection(args.model, video_source, args.class_id, args.imgsz, args.resize_width)
